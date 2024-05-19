@@ -1,20 +1,20 @@
 services:
   master:
-    image: localhost:5000/db_image
-    build: ./db_image/
+    image: localhost:5000/db
+    build: ./db/
     container_name: master
     volumes:
-      - ./db_image/master_data:/var/lib/postgresql/data
+      - ./db/master_data:/var/lib/postgresql/data
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: deb
       POSTGRES_DB: db
   slave:
-    image: localhost:5000/db_repl_image
-    build: ./db_repl_image/
+    image: localhost:5000/db_repl
+    build: ./db_repl/
     container_name: slave
     volumes:
-      - ./db_repl_image/slave_data:/var/lib/postgresql/data
+      - ./db_repl/slave_data:/var/lib/postgresql/data
     environment:
       POSTGRES_USER: replication
       POSTGRES_PASSWORD: deb
@@ -25,8 +25,8 @@ services:
       - master
 
   bot:
-    image: localhost:5000/bot_image
-    build: ./bot_image/
+    image: localhost:5000/bot
+    build: ./bot/
     env_file: .env
     container_name: bot
     restart: always
