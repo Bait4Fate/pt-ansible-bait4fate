@@ -1,0 +1,32 @@
+services:
+  master:
+    image: localhost:5000/db_image
+    build: ./db_image/
+    container_name: master
+    volumes:
+      - ./db_image/master_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: deb
+      POSTGRES_DB: db
+  slave:
+    image: localhost:5000/db_repl_image
+    build: ./db_repl_image/
+    container_name: slave
+    volumes:
+      - ./db_repl_image/slave_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: replication
+      POSTGRES_PASSWORD: deb
+      PGUSER: replication
+      PGPASSWORD: deb
+      PGDATABASE: db
+    depends_on:
+      - master
+
+  bot:
+    image: localhost:5000/bot_image
+    build: ./bot_image/
+    env_file: .env
+    container_name: bot
+    restart: always
