@@ -208,7 +208,7 @@
       blockinfile:
         path: /etc/postgresql/15/main/pg_hba.conf
         block: |
-          host replication replication 192.168.0.223/24 scram-sha-256
+          host replication replication {{ hostvars['db_slave']['ansible_host'] }}/24 scram-sha-256
           host all all 0.0.0.0/0 password
 
     - name: Ensure log directory exists
@@ -269,7 +269,7 @@
     - name: Run pg_basebackup
       become_user: postgres
       ansible.builtin.expect:
-        command: pg_basebackup -R -h 192.168.0.110 -U replication -D /var/lib/postgresql/15/main -P
+        command: pg_basebackup -R -h {{ hostvars['db_master']['ansible_host'] }} -U replication -D /var/lib/postgresql/15/main -P
         responses:
           'Password:': 'replication'
 
