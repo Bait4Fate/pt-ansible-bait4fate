@@ -231,12 +231,14 @@ def aptlistCommand(update: Update, context):
         client.close()
         data = str(data).replace('\\n', '\n').replace('\\t', '\t')[2:-1]
         update.message.reply_text(data)
+        return ConversationHandler.END
     else:
         stdin, stdout, stderr = client.exec_command(f'apt show {user_input}')
         data = stdout.read() + stderr.read()
         client.close()
         data = str(data).replace('\\n', '\n').replace('\\t', '\t')[2:-1]
         update.message.reply_text(data)
+        return ConversationHandler.END
 
 
 def servicesCommand(update: Update, context):
