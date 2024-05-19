@@ -1,0 +1,349 @@
+---
+- name: Setup SSH
+  hosts: all
+  become: yes
+  tasks:
+    - name: Set permit root logon - yes
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PermitRootLogin\s*$'
+        line: "PermitRootLogin yes"
+        state: present
+
+    - name: Restart SSH
+      ansible.builtin.service:
+        name: ssh
+        state: restarted
+
+- name: Setup PostgreSQL on master
+  hosts: database_masters
+  become: yes
+  tasks:
+    - name: Install PostgreSQL and dependencies
+      ansible.builtin.apt:
+        name:
+          - postgresql-15
+          - python3-psycopg2
+          - postgresql-contrib
+        state: present
+        update_cache: yes
+
+    - name: Ensure remote_tmp directory exists with correct permissions
+      file:
+        path: /var/lib/postgresql/.ansible/tmp
+        state: directory
+        mode: '0755'
+        owner: postgres
+        group: postgres
+
+    - name: Ensure PostgreSQL is started and enabled
+      ansible.builtin.service:
+        name: postgresql
+        state: started
+        enabled: yes
+
+    - name: Create database and tables
+      become_user: postgres
+      postgresql_db:
+        name: mydb
+        state: present
+
+    - name: Create tables
+      become_user: postgres
+      postgresql_query:
+        db: mydb
+        query: |
+          CREATE TABLE IF NOT EXISTS email (
+            id SERIAL PRIMARY KEY,
+            address VARCHAR(255) UNIQUE NOT NULL
+          );
+          CREATE TABLE IF NOT EXISTS phone (
+            id SERIAL PRIMARY KEY,
+            number VARCHAR(20) UNIQUE NOT NULL
+          );
+
+    - name: Insert data into email table if not exists
+      become_user: postgres
+      postgresql_query:
+        db: mydb
+        query: |
+          INSERT INTO email (address)
+          SELECT 'amogus@sus.am'
+          WHERE NOT EXISTS (SELECT 1 FROM email WHERE address = 'amogus@sus.am');
+          INSERT INTO email (address)
+          SELECT 'sussy@sus.am'
+          WHERE NOT EXISTS (SELECT 1 FROM email WHERE address = 'sussy@sus.am');
+
+    - name: Insert data into phone table if not exists
+      become_user: postgres
+      postgresql_query:
+        db: mydb
+        query: |
+          INSERT INTO phone (number)
+          SELECT '8(800)555-35-35'
+          WHERE NOT EXISTS (SELECT 1 FROM phone WHERE number = '8(800)555-35-35');
+          INSERT INTO phone (number)
+          SELECT '8(000)000-00-00'
+          WHERE NOT EXISTS (SELECT 1 FROM phone WHERE number = '8(000)000-00-00');
+
+    - name: Set up replication user
+      become_user: postgres
+      postgresql_user:
+        name: replication
+        password: replication
+        login_password: replication
+        role_attr_flags: REPLICATION
+        state: present
+
+    - name: Change postgres pass
+      become_user: postgres
+      postgresql_query:
+        db: mydb
+        query: "ALTER ROLE postgres PASSWORD 'postgres'"
+
+    - name: Check if replication slot exists
+      become_user: postgres
+      postgresql_query:
+        db: mydb
+        query: "SELECT 1 FROM pg_replication_slots WHERE slot_name = 'replication_slot';"
+      register: replication_slot_check
+
+    - name: Create replication slot
+      become_user: postgres
+      postgresql_query:
+        db: mydb
+        query: "SELECT * FROM pg_create_physical_replication_slot('replication_slot');"
+      when: replication_slot_check.query_result | length == 0
+
+    - name: Configure PostgreSQL for replication
+      block:
+        - name: Set listen_addresses
+          ansible.builtin.lineinfile:
+            path: /etc/postgresql/15/main/postgresql.conf
+            regexp: '^#?listen_addresses\s*='
+            line: "listen_addresses = '*'"
+            state: present
+
+        - name: Set archive_mode
+          ansible.builtin.lineinfile:
+            path: /etc/postgresql/15/main/postgresql.conf
+            regexp: '^#?archive_mode\s*='
+            line: "archive_mode = on"
+            state: present
+
+        - name: Set archive_command
+          ansible.builtin.lineinfile:
+            path: /etc/postgresql/15/main/postgresql.conf
+            regexp: '^#?archive_command\s*='
+            line: "archive_command = 'cp %p /oracle/pg_data/archive/%f'"
+            state: present
+
+        - name: Ensure archive exists
+          become_method: sudo
+          become_user: root
+          file:
+            path: /oracle/pg_data/archive/
+            state: directory
+            owner: postgres
+            group: postgres
+            mode: '0755'
+
+        - name: Set wal_level
+          ansible.builtin.lineinfile:
+            path: /etc/postgresql/15/main/postgresql.conf
+            regexp: '^#?wal_level\s*='
+            line: 'wal_level = replica'
+            state: present
+
+        - name: Set max_wal_senders
+          ansible.builtin.lineinfile:
+            path: /etc/postgresql/15/main/postgresql.conf
+            regexp: '^#?max_wal_senders\s*='
+            line: 'max_wal_senders = 3'
+            state: present
+
+        - name: Set wal_keep_size
+          ansible.builtin.lineinfile:
+            path: /etc/postgresql/15/main/postgresql.conf
+            regexp: '^#?wal_keep_size\s*='
+            line: 'wal_keep_size = 16'
+            state: present
+
+        - name: Set wal_log_hints
+          ansible.builtin.lineinfile:
+            path: /etc/postgresql/15/main/postgresql.conf
+            regexp: '^#?wal_log_hints\s*='
+            line: 'wal_log_hints = on'
+            state: present
+
+        - name: Set logging_collector
+          ansible.builtin.lineinfile:
+            path: /etc/postgresql/15/main/postgresql.conf
+            regexp: '^#?logging_collector\s*='
+            line: 'logging_collector = on'
+            state: present
+
+        - name: Set log_directory
+          ansible.builtin.lineinfile:
+            path: /etc/postgresql/15/main/postgresql.conf
+            regexp: '^#?log_directory\s*='
+            line: "log_directory = '/var/log/postgresql'"
+            state: present
+
+        - name: Set log_filename
+          ansible.builtin.lineinfile:
+            path: /etc/postgresql/15/main/postgresql.conf
+            regexp: '^#?log_filename\s*='
+            line: "log_filename = 'postgresql.log'"
+            state: present
+
+        - name: Set log_replication_commands = on
+          ansible.builtin.lineinfile:
+            path: /etc/postgresql/15/main/postgresql.conf
+            regexp: '^#?log_replication_commands\s*='
+            line: "log_replication_commands = on"
+            state: present
+
+    - name: Configure pg_hba.conf for replication
+      blockinfile:
+        path: /etc/postgresql/15/main/pg_hba.conf
+        block: |
+          host replication replication 192.168.0.223/24 scram-sha-256
+          host all all 0.0.0.0/0 password
+
+    - name: Ensure log directory exists
+      file:
+        path: /var/log/postgresql
+        state: directory
+        owner: postgres
+        group: postgres
+        mode: '0755'
+
+    - name: Restart PostgreSQL
+      ansible.builtin.service:
+        name: postgresql
+        state: restarted
+
+- name: Setup PostgreSQL on slave
+  hosts: database_slaves
+  become: yes
+  tasks:
+    - name: Install PostgreSQL and dependencies
+      ansible.builtin.apt:
+        name:
+          - postgresql-15
+          - python3-psycopg2
+          - postgresql-contrib
+          - python3-pip
+        state: present
+        update_cache: yes
+
+    - name: Ensure remote_tmp directory exists with correct permissions
+      file:
+        path: /var/lib/postgresql/.ansible/tmp
+        state: directory
+        mode: '0755'
+        owner: postgres
+        group: postgres
+
+    - name: Install pexpect
+      ansible.builtin.pip:
+        name: pexpect
+        extra_args: --break-system-packages
+
+    - name: Ensure PostgreSQL is stopped
+      ansible.builtin.service:
+        name: postgresql
+        state: stopped
+
+    - name: Check if /var/lib/postgresql/15/main exists
+      ansible.builtin.stat:
+        path: /var/lib/postgresql/15/main
+      register: pg_data_dir
+
+    - name: Ensure /var/lib/postgresql/15/main is absent
+      ansible.builtin.command:
+        cmd: rm -rf /var/lib/postgresql/15/main
+      when: pg_data_dir.stat.exists
+
+    - name: Run pg_basebackup
+      become_user: postgres
+      ansible.builtin.expect:
+        command: pg_basebackup -R -h 192.168.0.110 -U replication -D /var/lib/postgresql/15/main -P
+        responses:
+          'Password:': 'replication'
+
+    - name: Start PostgreSQL
+      ansible.builtin.service:
+        name: postgresql
+        state: started
+
+    - name: Check PostgreSQL service status
+      ansible.builtin.command:
+        cmd: systemctl status postgresql
+      register: postgresql_status
+
+    - name: Debug PostgreSQL service status
+      debug:
+        var: postgresql_status
+
+- name: Deploy and run Telegram bot
+  hosts: telegram_bot
+  become: yes
+  tasks:
+    - name: Install dependencies
+      ansible.builtin.apt:
+        name: "{{ item }}"
+        state: present
+        update_cache: yes
+      loop:
+        - python3
+        - python3-pip
+        - python3-venv
+        - git
+        - libpq-dev
+
+    - name: Check if /opt/telegram_bot exists
+      ansible.builtin.stat:
+        path: /opt/telegram_bot
+      register: bot
+
+    - name: Ensure /opt/telegram_bot is absent
+      ansible.builtin.command:
+        cmd: rm -rf /opt/telegram_bot
+      when: bot.stat.exists
+
+    - name: Clone Telegram bot repository
+      ansible.builtin.git:
+        repo: 'https://github.com/Bait4Fate/b4f_ansible.git'
+        dest: /opt/telegram_bot
+        version: main
+        clone: yes
+
+    - name: Debug repository clone status
+      debug:
+        msg: "Repository cloned successfully."
+
+    - name: Create a virtual environment
+      ansible.builtin.command:
+        cmd: python3 -m venv /opt/telegram_bot/venv
+        creates: /opt/telegram_bot/venv
+
+    - name: Copy .env file to bot directory
+      ansible.builtin.copy:
+        src: .env
+        dest: /opt/telegram_bot/.env
+
+    - name: chown /opt/telegram_bot
+      become_user: root
+      command: chown -R deb:deb /opt/telegram_bot
+
+    - name: Install Python dependencies in virtual environment
+      ansible.builtin.command:
+        cmd: /opt/telegram_bot/venv/bin/pip install -r /opt/telegram_bot/requirements.txt
+
+    - name: Run Telegram bot
+      ansible.builtin.shell: |
+        nohup /opt/telegram_bot/venv/bin/python /opt/telegram_bot/bot.py &
+      args:
+        chdir: /opt/telegram_bot

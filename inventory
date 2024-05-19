@@ -1,0 +1,12 @@
+[database_masters]
+db_master ansible_host=192.168.0.110 ansible_user=deb ansible_ssh_pass=deb ansible_become_password=deb
+
+[database_slaves]
+db_slave ansible_host=192.168.0.223 ansible_user=deb ansible_ssh_pass=deb ansible_become_password=deb
+
+[telegram_bot]
+bot_host ansible_host=192.168.0.128 ansible_user=deb ansible_ssh_pass=deb ansible_become_password=deb
+
+[all:vars]
+ansible_python_interpreter=/usr/bin/python3
+
