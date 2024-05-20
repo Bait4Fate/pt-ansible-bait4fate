@@ -226,7 +226,7 @@ def aptlistCommand(update: Update, context):
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     client.connect(hostname=host, username=username_ssh, password=password, port=port_ssh)
     if user_input == "Все":
-        stdin, stdout, stderr = client.exec_command('apt list | head -10')
+        stdin, stdout, stderr = client.exec_command('apt list --installed | head -10')
         data = stdout.read() + stderr.read()
         client.close()
         data = str(data).replace('\\n', '\n').replace('\\t', '\t')[2:-1]
