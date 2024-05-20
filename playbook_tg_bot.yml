@@ -302,6 +302,7 @@
         - python3-venv
         - git
         - libpq-dev
+        - sysstat
 
     - name: Check if /opt/telegram_bot exists
       ansible.builtin.stat:
